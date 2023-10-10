@@ -3,15 +3,15 @@ Analysis Example
 Generate pdf report and send via email
 
 Instructions
-To run this analysis you need to add a email and device_token to the environment variables,
+To run this analysis you need to add a email and device_id to the environment variables,
 Go the the analysis, then environment variables,
 type email on key, and insert your email on value
-type device_token on key and insert your device token on value
+type device_id on key, and insert your device id on value
 """
 import base64
 from datetime import datetime
 
-from tagoio_sdk import Analysis, Device, Services
+from tagoio_sdk import Analysis, Services, Resources
 from tagoio_sdk.modules.Utils.envToJson import envToJson
 
 DEVICE_VARIABLES = ["your_variable"]  # enter the variable from your device you would like
@@ -80,13 +80,13 @@ def my_analysis(context: any, scope: list = None) -> None:
 
     if not envVars.get("email"):
         raise ValueError("email environment variable not found")
-    if not envVars.get("device_token"):
-        raise ValueError("device_token environment variable not found")
+    if not envVars.get("device_id"):
+        raise ValueError("device_id environment variable not found")
 
-    device = Device({"token": envVars["device_token"]})
-
-    variables_buckets = device.getData(
-        {
+    resources = Resources()
+    variables_buckets = resources.devices.getDeviceData(
+        deviceId=envVars["device_id"],
+        queryParams={
             "variables": DEVICE_VARIABLES,
             "start_date": "1 month",
             "qty": 10,
@@ -118,33 +118,38 @@ def my_analysis(context: any, scope: list = None) -> None:
     base_64 = base64.b64encode(html.encode("utf-8")).decode("utf-8")
 
     # start the PDF service
-    pdfService = Services({"token": context.token}).PDF
-    pdf_base64 = pdfService.generate(
-        {
-            "base64": base_64,
-            "options": options,
-        }
-    )
+    services = Services()
 
-    # Start the email service
-    emailService = Services({"token": context.token}).email
+    try:
+        pdf_base64 = services.PDF.generate(
+            {
+                "base64": base_64,
+                "options": options,
+            }
+        )
+    except Exception as error:
+        print(error)
+        return
 
-    # Send the email.
-    emailService.send(
-        {
-            "to": envVars["email"],
-            "subject": "Exported File from TagoIO",
-            "message": "This is an example of a body message",
-            "attachment": {
-                "archive": pdf_base64.json()["result"],
-                "type": "base64",
-                "filename": "exportedfile.pdf",
-            },
-        }
-    )
+    try:
+        services.email.send(
+            {
+                "to": envVars["email"],
+                "subject": "Exported File from TagoIO",
+                "message": "This is an example of a body message",
+                "attachment": {
+                    "archive": pdf_base64.json()["result"],
+                    "type": "base64",
+                    "filename": "exportedfile.pdf",
+                },
+            }
+        )
+    except Exception as error:
+        print(error)
+        return
 
     print("Email sent successfully")
 
 
 # The analysis token in only necessary to run the analysis outside TagoIO
-Analysis(params={"token": "MY-ANALYSIS-TOKEN-HERE"}).init(my_analysis)
+Analysis.use(my_analysis, params={"token": "MY-ANALYSIS-TOKEN-HERE"})
